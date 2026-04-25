@@ -89,6 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const dartKeyInput   = document.getElementById('dartKeyInput');
     const editBtn          = document.getElementById('editBtn');
     const previewBtn       = document.getElementById('previewBtn');
+    const dartRawInput     = document.getElementById('dartRawInput');
+    const dartStatus       = document.getElementById('dartStatus');
+    const clearDartBtn     = document.getElementById('clearDartBtn');
     const extractScenesBtn = document.getElementById('extractScenesBtn');
     const goVeoBtn         = document.getElementById('goVeoBtn');
     const veoScenesEl      = document.getElementById('veoScenes');
@@ -109,6 +112,19 @@ document.addEventListener('DOMContentLoaded', () => {
     updateBadge();
     renderCalendar();
     renderHistory();
+
+    // ── DART 공시 입력 ──
+    dartRawInput?.addEventListener('input', () => {
+        const has = dartRawInput.value.trim().length > 0;
+        dartStatus.textContent = has
+            ? '✓ 공시 데이터 입력됨 — 실제 수치 기반으로 분석합니다'
+            : '⚠️ 공시 미입력 — AI 추정치 사용 (신뢰도 낮음)';
+        dartStatus.className = `text-xs mt-0.5 ${has ? 'text-green-400' : 'text-gray-600'}`;
+    });
+    clearDartBtn?.addEventListener('click', () => {
+        dartRawInput.value = '';
+        dartRawInput.dispatchEvent(new Event('input'));
+    });
 
     // ── Badge ──
     function updateBadge() {
@@ -544,14 +560,19 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
         try {
             // Step 1
             stepActive(1);
-            await delay(800);
+            const dartRaw = dartRawInput?.value.trim() || '';
+            await delay(600);
             stepDone(1);
 
             // Step 2 — Premium (full token budget)
             stepActive(2);
+            const dartSection = dartRaw
+                ? `\n\n【실제 공시 데이터 — 아래 수치만 사용하고 임의로 만들지 말 것】\n${dartRaw.slice(0, 4000)}\n【공시 데이터 끝】\n`
+                : '\n\n【주의】 공시 데이터 미제공. 추정치 사용 시 반드시 **(추정)** 명시할 것.\n';
+
             const premiumPrompt = `당신은 12년 이상 경력의 대기업/스타트업 재무 주재원이자 현직 IR 팀장입니다.
 고려대 KMBA 졸업, OCI·태광그룹·한화첨단소재·CS Wind 재무·IR 경력 보유자입니다.
-
+${dartSection}
 분석 기업: ${company}
 시장: ${market==='KOR'?'국내 증시 (KOSPI/KOSDAQ)':'미국 증시 (NYSE/NASDAQ)'}
 분석 기간: ${quarter}
@@ -578,7 +599,7 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
 ## 5. 투자 포인트 & 리스크 요약
 > 매수/관망/매도 의견 (필자 개인 의견 명시)
 
-[작성 지침] 전문적 문어체. 추정치는 **(추정)** 표기. 볼드·이탤릭·표 적극 활용. 절대 중간에 끊지 말고 ## 5. 투자 포인트까지 완성할 것.`;
+[작성 지침] 전문적 문어체. 추정치는 **(추정)** 표기. 공시 데이터 제공 시 해당 수치를 최우선으로 사용. 볼드·이탤릭·표 적극 활용. 절대 중간에 끊지 말고 ## 5. 투자 포인트까지 완성할 것.`;
 
             const premiumText = await callGemini(premiumPrompt, cfg.tokens);
             premiumEditor.value = premiumText;
