@@ -801,23 +801,42 @@ ${premiumText.length > 2500 ? '...(이하 생략)' : ''}
             stepDone(3);
 
             // Step 4 — YouTube Script
+            await delay(500);
             stepActive(4);
-            const ytPrompt = `다음은 ${company} ${quarter} 심층 재무 리포트입니다:
+            // 유튜브 탭으로 자동 전환해서 생성되는 걸 바로 볼 수 있게
+            document.querySelector('[data-tab="youtube"]')?.click();
 
----
-${premiumText.slice(0, 3000)}${premiumText.length > 3000 ? '\n...(이하 생략)' : ''}
----
+            const ytPrompt = `당신은 12년 재무/IR 경력의 유튜브 크리에이터입니다.
+아래 ${company} ${quarter} 재무 리포트를 바탕으로 5~8분짜리 유튜브 영상 대본을 작성하세요.
 
-5~8분짜리 유튜브 영상 대본을 작성하세요.
+[리포트 요약]
+${premiumText.slice(0, 2500)}${premiumText.length > 2500 ? '\n...(이하 생략)' : ''}
 
-[오프닝 Hook 30초] 충격적인 수치나 질문으로 이목 집중
-[자기소개 20초] 12년 재무/IR 경력 소개
-[본론 4~6분] 재무 리스크 3가지를 비유와 함께 쉽게 설명 + [화면 지시문]
-[클로징 30초] 요약 + 네이버 프리미엄 유도 + 구독·좋아요
+[대본 구조 — 반드시 이 순서대로 작성]
+[오프닝 Hook - 30초]
+충격적인 수치나 질문으로 시작. 예: "이 회사, 매출은 올랐는데 영업이익이 반토막 났습니다."
 
-해요체 구어체. [화면: xxx] 지시문 포함.`;
+[자기소개 - 20초]
+12년 재무/IR 경력, 현직 IR 팀장 소개
 
-            youtubeEditor.value = await callGemini(ytPrompt, cfg.tokens);
+[본론 파트1 - 실적 핵심]
+[화면: 실적 테이블] 지시문 포함. 매출·영업이익 YoY 수치 설명
+
+[본론 파트2 - 3대 리스크]
+각 리스크마다 [화면: xxx] 지시문과 함께 비유로 쉽게 설명
+
+[본론 파트3 - IR 팀장 인사이트]
+[화면: 차트] 지시문 포함. 일반 투자자가 모르는 공시 이면의 내용
+
+[클로징 - 30초]
+핵심 요약 + "전체 분석은 네이버 프리미엄에서" + 구독·좋아요 요청
+
+[작성 규칙]
+- 해요체 구어체 (읽어 내려가듯 자연스럽게)
+- [화면: xxx] 지시문 반드시 포함 (VEO 영상 생성에 사용됨)
+- 전체 1500자 이상`;
+
+            youtubeEditor.value = await callGemini(ytPrompt, Math.max(cfg.tokens, 4096));
             stepDone(4);
 
             saveHistory(company, market, quarter);
