@@ -222,7 +222,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ── Download ──
+    // ── Word 저장 ──
+    function buildWordHtml(content, title) {
+        const body = marked.parse(content);
+        return `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+xmlns:w="urn:schemas-microsoft-com:office:word"
+xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><title>${title}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+body{font-family:'맑은 고딕',Arial,sans-serif;font-size:11pt;margin:2.5cm;color:#1a1a1a;line-height:1.7}
+h1{font-size:18pt;font-weight:bold;border-bottom:2pt solid #2d3748;padding-bottom:6pt;margin:0 0 14pt}
+h2{font-size:14pt;font-weight:bold;color:#2d3748;margin:18pt 0 6pt;border-bottom:1pt solid #e2e8f0;padding-bottom:3pt}
+h3{font-size:12pt;font-weight:bold;color:#4a5568;margin:12pt 0 4pt}
+p{margin-bottom:8pt}
+table{border-collapse:collapse;width:100%;margin:10pt 0;font-size:10pt}
+th{background:#f7fafc;border:1pt solid #cbd5e0;padding:5pt 8pt;font-weight:bold;text-align:left}
+td{border:1pt solid #cbd5e0;padding:4pt 8pt}
+tr:nth-child(even) td{background:#f9fafb}
+strong{font-weight:bold;color:#744210}
+em{color:#2b6cb0}
+blockquote{border-left:3pt solid #3182ce;padding-left:12pt;color:#4a5568;margin:8pt 0}
+code{background:#f1f5f9;padding:1pt 4pt;border-radius:3pt;font-size:9.5pt}
+</style></head>
+<body>
+<div style="margin-bottom:20pt;padding-bottom:12pt;border-bottom:1pt solid #e2e8f0">
+  <h1>${title}</h1>
+  <p style="color:#718096;font-size:9pt;margin:0">작성일: ${new Date().toLocaleDateString('ko-KR')} &nbsp;|&nbsp; IR Insight — AI × 현직 IR 팀장 분석</p>
+</div>
+${body}
+<div style="margin-top:30pt;padding-top:10pt;border-top:1pt solid #e2e8f0;font-size:8pt;color:#718096">
+  본 리포트는 투자 참고용이며 투자 판단의 최종 책임은 투자자 본인에게 있습니다.
+</div>
+</body></html>`;
+    }
+
     document.querySelectorAll('.dlbtn').forEach(btn => {
         btn.addEventListener('click', () => {
             const ta = document.getElementById(btn.dataset.for);
@@ -230,13 +264,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const co = (companyInput.value.trim() || '분석결과').replace(/\s/g,'');
             const q  = (quarterInput.value.trim() || '분기').replace(/\s/g,'');
             const labels = { premiumEditor:'프리미엄리포트', freeEditor:'텔레그램요약', youtubeEditor:'유튜브대본' };
-            const fn = `${co}_${q}_${labels[btn.dataset.for]}.md`;
+            const title = `IR Insight — ${companyInput.value.trim()||'분석결과'} ${quarterInput.value.trim()||''}`;
+            const fn = `${co}_${q}_${labels[btn.dataset.for]}.doc`;
+            const wordHtml = buildWordHtml(ta.value, title);
             const a = Object.assign(document.createElement('a'), {
-                href: URL.createObjectURL(new Blob([ta.value], { type:'text/plain;charset=utf-8' })),
+                href: URL.createObjectURL(new Blob(['﻿' + wordHtml], { type:'application/msword;charset=utf-8' })),
                 download: fn
             });
             a.click(); URL.revokeObjectURL(a.href);
-            toast(`${fn} 저장됨`);
+            toast(`${fn} 저장됨 — Word에서 열어주세요`);
         });
     });
 
