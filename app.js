@@ -60,6 +60,11 @@ const LEN_CONFIG = {
 // ══════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
 
+    // PDF.js worker
+    if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
     // ── DOM refs ──
     const companyInput   = document.getElementById('companyInput');
     const marketSelect   = document.getElementById('marketSelect');
@@ -146,21 +151,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function readFileText(file) {
-        return new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onload = e => {
-                const buf = e.target.result;
-                let text;
-                try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
-                catch { text = new TextDecoder('euc-kr').decode(buf); }
-                if (file.name.match(/\.html?$/i)) {
-                    const doc = new DOMParser().parseFromString(text, 'text/html');
-                    text = (doc.body?.innerText || doc.body?.textContent || text);
-                }
-                resolve(text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim());
-            };
-            reader.readAsArrayBuffer(file);
-        });
+        const buf = await file.arrayBuffer();
+
+        // PDF
+        if (file.name.match(/\.pdf$/i)) {
+            if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js 로드 실패 — 인터넷 연결 확인');
+            const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+            let text = '';
+            for (let i = 1; i <= Math.min(pdf.numPages, 60); i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                text += content.items.map(it => it.str).join(' ') + '\n';
+            }
+            return text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+        }
+
+        // HTML / TXT (EUC-KR 자동 감지)
+        let text;
+        try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+        catch { text = new TextDecoder('euc-kr').decode(buf); }
+        if (file.name.match(/\.html?$/i)) {
+            const doc = new DOMParser().parseFromString(text, 'text/html');
+            text = doc.body?.innerText || doc.body?.textContent || text;
+        }
+        return text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     }
 
     async function processDartFiles(files) {

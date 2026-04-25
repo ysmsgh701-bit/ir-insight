@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body class="bg-dark-900 text-gray-200 font-sans min-h-screen antialiased">
 
@@ -125,10 +126,10 @@
                             </div>
                         </div>
                         <div id="dartDropZone" class="border-2 border-dashed border-dark-600 rounded-lg p-3 text-center cursor-pointer hover:border-green-500/50 transition-colors">
-                            <input type="file" id="dartFileInput" multiple accept=".html,.htm,.txt" class="hidden">
+                            <input type="file" id="dartFileInput" multiple accept=".html,.htm,.txt,.pdf" class="hidden">
                             <i data-lucide="upload" class="w-4 h-4 mx-auto mb-1 text-gray-600"></i>
                             <p class="text-xs text-gray-500">DART 다운로드 파일 드래그 or 클릭</p>
-                            <p class="text-xs text-gray-700 mt-0.5">복수 선택 · .html .txt</p>
+                            <p class="text-xs text-gray-700 mt-0.5">복수 선택 · .html .txt .pdf</p>
                         </div>
                         <div id="dartFileChips" class="flex flex-wrap gap-1 mt-1.5"></div>
                         <p id="dartStatus" class="text-xs text-gray-600 mt-1">⚠️ 공시 미입력 — AI 추정치 사용 (신뢰도 낮음)</p>
