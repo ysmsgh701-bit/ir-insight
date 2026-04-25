@@ -586,32 +586,29 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
 
             // Step 3 — Free summary
             stepActive(3);
-            const freePrompt = `다음은 ${company} ${quarter} 심층 재무 리포트입니다:
+            const freePrompt = `당신은 방산 전문 IR 애널리스트입니다. 아래 리포트를 읽고 텔레그램 채널 포스팅을 작성하세요.
 
----
-${premiumText.slice(0, 3000)}${premiumText.length > 3000 ? '\n...(이하 생략)' : ''}
----
+[리포트]
+${premiumText.slice(0, 2500)}
+${premiumText.length > 2500 ? '...(이하 생략)' : ''}
 
-위 내용을 바탕으로 텔레그램/블로그 무료 배포용 요약 포스트를 작성하세요.
+[절대 금지]
+- **, *, ##, ~~~ 등 마크다운 기호 사용 금지
+- 설명·서두·맺음말 붙이기 금지
+- 한 줄이 40자를 넘지 않도록 할 것
 
-아래 형식을 정확히 따르세요:
-
-📊 **${company} ${quarter} 실적 핵심 요약**
-
-• [핵심 수치·지표 포함 한 줄 — 예: 매출 YoY +XX%]
-• [주요 리스크 또는 이슈 한 줄]
-• [투자자가 반드시 알아야 할 포인트 한 줄]
-• [글로벌 피어 대비 포지션 또는 향후 전망 한 줄]
-
-⚠️ [IR 팀장 한 줄 경고 또는 주목 포인트]
-
-👉 전체 심층 분석(피어 비교·현금흐름·투자의견)은 네이버 프리미엄에서 확인하세요.
-
-작성 규칙:
-- 실제 수치를 넣어 구체적으로 작성
-- 이모지 풍부하게 (📊 💰 🚀 ⚠️ 📈 📉 🏭)
-- 구어체, 임팩트 있게
-- 전체 400~600자`;
+[출력 구조 — 이 순서 그대로만 출력]
+줄1: 📊 ${company} ${quarter} 핵심 정리
+줄2: (빈 줄)
+줄3: 📈 (매출 수치와 YoY 증감률 포함, 40자 이내)
+줄4: 📉 (영업이익 또는 원가율 이슈, 40자 이내)
+줄5: 💰 (수주잔고 또는 현금흐름 핵심, 40자 이내)
+줄6: (빈 줄)
+줄7: ⚠️ (리스크 또는 주의사항, 40자 이내)
+줄8: (빈 줄)
+줄9: 💡 (IR 팀장 핵심 인사이트, 40자 이내)
+줄10: (빈 줄)
+줄11: 👉 전체 심층 분석은 네이버 프리미엄에서 확인하세요 📌`;
 
             freeEditor.value = await callGemini(freePrompt, 1500);
             stepDone(3);
@@ -689,19 +686,25 @@ Example: ["A sleek corporate boardroom...", "Close-up of stock charts..."]`;
         statusEl.textContent = '생성 요청 중...';
         statusEl.className = 'veo-status text-xs text-blue-400 mt-2';
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-preview:predictLongRunning?key=${GEMINI_KEY}`;
+        // VEO 2.0: 일반 Gemini API 키로 접근 가능한 최신 모델
+        const VEO_MODEL = 'veo-2.0-generate-001';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${VEO_MODEL}:predictLongRunning?key=${GEMINI_KEY}`;
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'models/veo-3.0-generate-preview',
                 instances: [{ prompt }],
                 parameters: { aspectRatio: '16:9', sampleCount: 1 }
             })
         });
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
-            throw new Error(e?.error?.message || `VEO API 오류 (${res.status})`);
+            const msg = e?.error?.message || `VEO API 오류 (${res.status})`;
+            // 모델 접근 불가 시 AI Studio 안내
+            if (res.status === 404 || res.status === 403 || msg.includes('not found') || msg.includes('not supported')) {
+                throw new Error('VEO 접근 권한 없음 — 프롬프트를 복사해 Google AI Studio(VideoFX)에서 직접 생성하세요.');
+            }
+            throw new Error(msg);
         }
         const opData = await res.json();
         const opName = opData.name;
@@ -775,9 +778,19 @@ Example: ["A sleek corporate boardroom...", "Close-up of stock charts..."]`;
                     await callVeoApi(prompts[idx], card);
                     toast(`씬 ${idx + 1} 영상 생성 완료!`);
                 } catch (err) {
-                    card.querySelector('.veo-status').textContent = `오류: ${err.message}`;
-                    card.querySelector('.veo-status').className = 'veo-status text-xs text-red-400 mt-2';
-                    toast(err.message, 'err');
+                    const statusEl = card.querySelector('.veo-status');
+                    const isAccessErr = err.message.includes('접근 권한') || err.message.includes('not found') || err.message.includes('not supported');
+                    if (isAccessErr) {
+                        // 프롬프트 자동 복사 + AI Studio 링크
+                        navigator.clipboard.writeText(prompts[idx]).catch(() => {});
+                        statusEl.innerHTML = `프롬프트가 복사됐어요 → <a href="https://aistudio.google.com/generate-video" target="_blank" class="text-blue-400 underline">AI Studio에서 생성</a>`;
+                        statusEl.className = 'veo-status text-xs text-yellow-400 mt-2';
+                        toast('프롬프트 복사 완료 — AI Studio에서 붙여넣기 하세요', 'warn');
+                    } else {
+                        statusEl.textContent = `오류: ${err.message}`;
+                        statusEl.className = 'veo-status text-xs text-red-400 mt-2';
+                        toast(err.message, 'err');
+                    }
                 } finally {
                     btn.disabled = false;
                     btn.innerHTML = '<i data-lucide="play" class="w-3 h-3 mr-1"></i>VEO 생성';
