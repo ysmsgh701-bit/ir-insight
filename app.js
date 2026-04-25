@@ -89,9 +89,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const dartKeyInput   = document.getElementById('dartKeyInput');
     const editBtn          = document.getElementById('editBtn');
     const previewBtn       = document.getElementById('previewBtn');
-    const dartRawInput     = document.getElementById('dartRawInput');
     const dartStatus       = document.getElementById('dartStatus');
-    const clearDartBtn     = document.getElementById('clearDartBtn');
+    const dartDropZone     = document.getElementById('dartDropZone');
+    const dartFileInput    = document.getElementById('dartFileInput');
+    const dartFileChips    = document.getElementById('dartFileChips');
+    const dartLink         = document.getElementById('dartLink');
+    const kindLink         = document.getElementById('kindLink');
     const extractScenesBtn = document.getElementById('extractScenesBtn');
     const goVeoBtn         = document.getElementById('goVeoBtn');
     const veoScenesEl      = document.getElementById('veoScenes');
@@ -113,18 +116,100 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCalendar();
     renderHistory();
 
-    // ── DART 공시 입력 ──
-    dartRawInput?.addEventListener('input', () => {
-        const has = dartRawInput.value.trim().length > 0;
+    // ── DART 파일 업로드 ──
+    let dartFiles = [];
+
+    function updateDartStatus() {
+        const has = dartFiles.length > 0;
         dartStatus.textContent = has
-            ? '✓ 공시 데이터 입력됨 — 실제 수치 기반으로 분석합니다'
+            ? `✓ 공시 ${dartFiles.length}개 입력됨 — 실제 수치 기반으로 분석합니다`
             : '⚠️ 공시 미입력 — AI 추정치 사용 (신뢰도 낮음)';
-        dartStatus.className = `text-xs mt-0.5 ${has ? 'text-green-400' : 'text-gray-600'}`;
+        dartStatus.className = `text-xs mt-1 ${has ? 'text-green-400' : 'text-gray-600'}`;
+    }
+
+    function renderDartChips() {
+        dartFileChips.innerHTML = dartFiles.map((f, i) => `
+            <span class="inline-flex items-center gap-1 text-xs bg-green-900/30 text-green-300 border border-green-700/40 px-2 py-0.5 rounded-full max-w-full">
+                <i data-lucide="file-text" class="w-3 h-3 flex-shrink-0"></i>
+                <span class="truncate max-w-[130px]">${f.name}</span>
+                <button class="rm-dart ml-0.5 hover:text-red-400 flex-shrink-0" data-i="${i}">×</button>
+            </span>`).join('');
+        lucide.createIcons();
+        dartFileChips.querySelectorAll('.rm-dart').forEach(btn => {
+            btn.addEventListener('click', () => {
+                dartFiles.splice(+btn.dataset.i, 1);
+                renderDartChips();
+                updateDartStatus();
+            });
+        });
+        updateDartStatus();
+    }
+
+    async function readFileText(file) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const buf = e.target.result;
+                let text;
+                try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+                catch { text = new TextDecoder('euc-kr').decode(buf); }
+                if (file.name.match(/\.html?$/i)) {
+                    const doc = new DOMParser().parseFromString(text, 'text/html');
+                    text = (doc.body?.innerText || doc.body?.textContent || text);
+                }
+                resolve(text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim());
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    async function processDartFiles(files) {
+        for (const file of files) {
+            if (dartFiles.find(f => f.name === file.name)) continue;
+            const content = await readFileText(file);
+            dartFiles.push({ name: file.name, content });
+        }
+        renderDartChips();
+    }
+
+    dartDropZone?.addEventListener('click', () => dartFileInput.click());
+    dartDropZone?.addEventListener('dragover', e => { e.preventDefault(); dartDropZone.classList.add('border-green-500/50','border-green-500'); });
+    dartDropZone?.addEventListener('dragleave', () => dartDropZone.classList.remove('border-green-500/50','border-green-500'));
+    dartDropZone?.addEventListener('drop', async e => {
+        e.preventDefault();
+        dartDropZone.classList.remove('border-green-500/50','border-green-500');
+        await processDartFiles([...e.dataTransfer.files]);
     });
-    clearDartBtn?.addEventListener('click', () => {
-        dartRawInput.value = '';
-        dartRawInput.dispatchEvent(new Event('input'));
+    dartFileInput?.addEventListener('change', async () => {
+        await processDartFiles([...dartFileInput.files]);
+        dartFileInput.value = '';
     });
+
+    // ── DART / KIND 링크 자동 업데이트 ──
+    function updateDisclosureLinks() {
+        const co     = companyInput.value.trim();
+        const mkt    = marketSelect.value;
+        const ticker = COMPANY_DB.find(c => c.name === co)?.ticker || '';
+        if (!dartLink || !kindLink) return;
+        if (mkt === 'KOR') {
+            dartLink.href = co
+                ? `https://dart.fss.or.kr/dsearch/main.do?option=corp&textCrpNm=${encodeURIComponent(co)}`
+                : 'https://dart.fss.or.kr';
+            dartLink.innerHTML = '<i data-lucide="external-link" class="w-3 h-3 mr-1"></i>DART';
+            kindLink.href = ticker
+                ? `https://kind.krx.co.kr/disclosure/timely.do?method=searchTimely&keyword=${ticker}`
+                : 'https://kind.krx.co.kr';
+            kindLink.classList.remove('hidden');
+        } else {
+            dartLink.href = co
+                ? `https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(co)}&type=10-Q&dateb=&owner=include&count=10&search_text=&action=getcompany`
+                : 'https://www.sec.gov';
+            dartLink.innerHTML = '<i data-lucide="external-link" class="w-3 h-3 mr-1"></i>SEC';
+            kindLink.classList.add('hidden');
+        }
+        lucide.createIcons();
+    }
+    updateDisclosureLinks();
 
     // ── Badge ──
     function updateBadge() {
@@ -315,12 +400,14 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
 
     companyInput.addEventListener('input', () => {
         const q = companyInput.value.trim().toLowerCase();
+        updateDisclosureLinks();
         if (!q) { acDrop.classList.add('hidden'); return; }
         acList = COMPANY_DB.filter(c =>
             c.name.toLowerCase().includes(q) || c.ticker.toLowerCase().includes(q) || c.sector.toLowerCase().includes(q)
         ).slice(0, 8);
         renderAc();
     });
+    marketSelect.addEventListener('change', updateDisclosureLinks);
     companyInput.addEventListener('focus', () => {
         if (companyInput.value.trim()) companyInput.dispatchEvent(new Event('input'));
     });
@@ -357,6 +444,7 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
         companyInput.value = c.name; marketSelect.value = c.market;
         acDrop.classList.add('hidden'); acIdx = -1;
         syncChips(c.name);
+        updateDisclosureLinks();
     }
     function syncChips(name) {
         document.querySelectorAll('.qchip').forEach(ch => ch.classList.toggle('chip-on', ch.dataset.company === name));
@@ -369,6 +457,7 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
             marketSelect.value = chip.dataset.market;
             syncChips(chip.dataset.company);
             acDrop.classList.add('hidden');
+            updateDisclosureLinks();
         });
     });
 
@@ -480,6 +569,7 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
                 marketSelect.value = row.dataset.mkt;
                 quarterInput.value = row.dataset.q;
                 syncChips(row.dataset.co);
+                updateDisclosureLinks();
                 toast(`${row.dataset.co} 선택됨`);
             });
         });
@@ -596,14 +686,16 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
         try {
             // Step 1
             stepActive(1);
-            const dartRaw = dartRawInput?.value.trim() || '';
+            const dartRaw = dartFiles.length > 0
+                ? dartFiles.map(f => `=== ${f.name} ===\n${f.content}`).join('\n\n')
+                : '';
             await delay(600);
             stepDone(1);
 
             // Step 2 — Premium (full token budget)
             stepActive(2);
             const dartSection = dartRaw
-                ? `\n\n【실제 공시 데이터 — 아래 수치를 최우선으로 사용하고 임의로 만들지 말 것】\n${dartRaw.slice(0, 4000)}\n【공시 데이터 끝】\n`
+                ? `\n\n【실제 공시 데이터 (${dartFiles.length}개 파일) — 아래 수치를 최우선으로 사용하고 임의로 만들지 말 것】\n${dartRaw.slice(0, 5000)}\n【공시 데이터 끝】\n`
                 : '\n\n【주의】 공시 데이터 미제공. 추정치 사용 시 반드시 **(추정)** 명시할 것.\n';
 
             const disclosureGuide = market === 'KOR' ? `
