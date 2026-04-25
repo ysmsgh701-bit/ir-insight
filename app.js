@@ -652,25 +652,73 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
 
     const delay = ms => new Promise(r => setTimeout(r, ms));
 
-    // ── Gemini call ──
+    // ── Gemini call (429 auto-retry) ──
     async function callGemini(prompt, maxTokens = 8192) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
-        const res = await fetch(url, {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({
-                contents:[{parts:[{text:prompt}]}],
-                generationConfig:{ temperature:0.7, maxOutputTokens:maxTokens }
-            })
-        });
-        if (!res.ok) {
-            const e = await res.json().catch(()=>({}));
-            throw new Error(e?.error?.message || `API 오류 (HTTP ${res.status})`);
+        const MAX_RETRIES = 2;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens }
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 429 && attempt < MAX_RETRIES) {
+                const msg = data?.error?.message || '';
+                const secMatch = msg.match(/retry in ([\d.]+)s/i);
+                const waitSec = secMatch ? Math.ceil(parseFloat(secMatch[1])) + 3 : 45;
+                toast(`API 한도 초과 — ${waitSec}초 후 자동 재시도 중...`, 'warn');
+                await delay(waitSec * 1000);
+                continue;
+            }
+            if (!res.ok) throw new Error(data?.error?.message || `API 오류 (HTTP ${res.status})`);
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error('API 응답에서 텍스트를 추출할 수 없습니다.');
+            return text;
         }
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error('API 응답에서 텍스트를 추출할 수 없습니다.');
-        return text;
+        throw new Error('API 한도 초과 — 잠시 후 다시 시도해주세요.');
+    }
+
+    // ── Peer Group Search (Google Search grounding → fallback) ──
+    async function findPeerGroup(company, market) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
+        const prompt = market === 'KOR'
+            ? `${company}의 사업 내용을 검색하고, 이 회사와 동종업계인 국내 증시(KOSPI/KOSDAQ) 상장 피어 기업 4~5개를 찾아주세요.
+[출력 형식] 기업명(티커코드), 기업명(티커코드), ... — 한 줄, 설명 없이
+예시: 한화에어로스페이스(012450), LIG넥스원(079550), 현대로템(064350)`
+            : `Search for ${company}'s business and find 4-5 comparable peer companies listed on US stock exchanges (NYSE/NASDAQ).
+[Output format] CompanyName(TICKER), CompanyName(TICKER), ... — one line only, no explanation
+Example: Lockheed Martin(LMT), RTX Corporation(RTX), Northrop Grumman(NOC)`;
+
+        for (const useSearch of [true, false]) {
+            try {
+                const body = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
+                };
+                if (useSearch) body.tools = [{ googleSearch: {} }];
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    const raw = data?.candidates?.[0]?.content?.parts?.find(p => p.text)?.text?.trim();
+                    if (raw && raw.length > 5) {
+                        const line = raw.split('\n').find(l => l.includes('(') && l.includes(')')) || raw.split('\n')[0];
+                        return line.replace(/^[-*•]\s*/, '').trim();
+                    }
+                }
+            } catch (e) { /* fall through */ }
+        }
+
+        return market === 'KOR'
+            ? '한화에어로스페이스(012450), LIG넥스원(079550), 현대로템(064350), 한국항공우주(047810)'
+            : 'Lockheed Martin(LMT), Northrop Grumman(NOC), RTX Corporation(RTX), General Dynamics(GD)';
     }
 
     // ── Core Analysis ──
@@ -692,18 +740,13 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
         analyzeBtn.classList.add('opacity-60','cursor-not-allowed');
         lucide.createIcons();
 
-        const peers = {
-            KOR:'한화에어로스페이스, LIG넥스원, 현대로템, 한국항공우주(KAI)',
-            USA:'Lockheed Martin(LMT), Northrop Grumman(NOC), RTX Corporation, General Dynamics(GD)'
-        };
-
         try {
-            // Step 1
+            // Step 1 — Peer Group Search
             stepActive(1);
             const dartRaw = dartFiles.length > 0
                 ? dartFiles.map(f => `=== ${f.name} ===\n${f.content}`).join('\n\n')
                 : '';
-            await delay(600);
+            const peerGroup = await findPeerGroup(company, market);
             stepDone(1);
 
             // Step 2 — Premium (full token budget)
@@ -737,7 +780,7 @@ ${dartSection}${disclosureGuide}
 분석 기업: ${company}
 시장: ${market==='KOR'?'국내 증시 (KOSPI/KOSDAQ)':'미국 증시 (NYSE/NASDAQ)'}
 분석 기간: ${quarter}
-글로벌 피어그룹: ${peers[market]||peers.KOR}
+글로벌 피어그룹: ${peerGroup}
 분량 지침: ${cfg.instruction}
 
 아래 목차 구조에 따라 '네이버 프리미엄콘텐츠'용 심층 재무 리포트를 마크다운으로 작성하세요.
@@ -757,7 +800,7 @@ ${dartSection}${disclosureGuide}
 - 공시된 내용 없거나 미제공 시 **(공시 미확인)** 명시
 
 ## 4. 글로벌 피어(Peer) 비교
-> 표 형식으로: 영업이익률, 수주잔고/매출 비율, ROE 비교 (${peers[market]||peers.KOR})
+> 표 형식으로: 영업이익률, 수주잔고/매출 비율, ROE 비교 (${peerGroup})
 
 ## 5. IR 팀장의 핵심 인사이트
 > 수주잔고 매출 인식 시점 / 원가율 변동 요인 / 환율 민감도 / 공시 이면의 돈의 흐름
