@@ -80,7 +80,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const batchLabel     = document.getElementById('batchLabel');
     const progressContainer = document.getElementById('progressContainer');
     const premiumEditor  = document.getElementById('premiumEditor');
-    const freeEditor     = document.getElementById('freeEditor');
     const youtubeEditor  = document.getElementById('youtubeEditor');
     const mdPreview      = document.getElementById('mdPreview');
     const apiStatus      = document.getElementById('apiStatus');
@@ -94,6 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const dartKeyInput   = document.getElementById('dartKeyInput');
     const editBtn          = document.getElementById('editBtn');
     const previewBtn       = document.getElementById('previewBtn');
+    const instaCardsEl     = document.getElementById('instaCards');
+    const instaEmptyEl     = document.getElementById('instaEmpty');
+    const copyAllInstaBtn  = document.getElementById('copyAllInstaBtn');
     const dartStatus       = document.getElementById('dartStatus');
     const dartDropZone     = document.getElementById('dartDropZone');
     const dartFileInput    = document.getElementById('dartFileInput');
@@ -106,20 +108,80 @@ document.addEventListener('DOMContentLoaded', () => {
     const veoEmptyEl       = document.getElementById('veoEmpty');
 
     // ── State ──
-    let GEMINI_KEY   = localStorage.getItem('GEMINI_API_KEY') || '';
-    let DART_KEY     = localStorage.getItem('DART_API_KEY')   || '';
-    let currentLen   = 'medium';
-    let batchQueue   = [];
-    let batchRunning = false;
-    let stopBatch    = false;
-    let isPreview    = false;
-    let calFilter    = 'ALL';
+    let GEMINI_KEY      = localStorage.getItem('GEMINI_API_KEY') || '';
+    let DART_KEY        = localStorage.getItem('DART_API_KEY')   || '';
+    let currentLen      = 'medium';
+    let batchQueue      = [];
+    let batchRunning    = false;
+    let stopBatch       = false;
+    let isPreview       = false;
+    let calFilter       = 'ALL';
+    let currentInstaCards = [];
 
     geminiKeyInput.value = GEMINI_KEY;
     dartKeyInput.value   = DART_KEY;
     updateBadge();
     renderCalendar();
     renderHistory();
+
+    // ── Instagram Card News ──
+    const INSTA_GRADIENTS = [
+        'linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%)',
+        'linear-gradient(135deg,#1a1a2e 0%,#1e2a1e 60%,#0d3b1e 100%)',
+        'linear-gradient(135deg,#1a1a2e 0%,#2d1b1b 60%,#3d0d0d 100%)',
+        'linear-gradient(135deg,#1a1a2e 0%,#1e1e2d 60%,#2d1b3d 100%)',
+        'linear-gradient(135deg,#1a1a2e 0%,#1a2020 60%,#0d2d2d 100%)',
+    ];
+
+    function renderInstaCards(cards, company, quarter) {
+        currentInstaCards = cards;
+        if (!instaCardsEl || !instaEmptyEl) return;
+        if (!cards || !cards.length) {
+            instaEmptyEl.classList.remove('hidden');
+            instaCardsEl.classList.add('hidden');
+            return;
+        }
+        instaEmptyEl.classList.add('hidden');
+        instaCardsEl.classList.remove('hidden');
+        instaCardsEl.innerHTML = cards.map((card, i) => `
+            <div class="relative overflow-hidden rounded-2xl border border-dark-600/50 shadow-xl"
+                style="background:${INSTA_GRADIENTS[i % INSTA_GRADIENTS.length]};aspect-ratio:1/1;min-height:260px">
+                <div class="absolute inset-0 p-6 flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <span style="font-size:2rem;line-height:1">${card.emoji || '📊'}</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-black/30 text-gray-400">${i + 1} / ${cards.length}</span>
+                    </div>
+                    <div class="flex-1 flex flex-col justify-center py-3">
+                        <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:#d4a855">${card.title || ''}</p>
+                        <h2 class="text-base font-bold text-white leading-snug mb-2">${card.headline || ''}</h2>
+                        <p class="text-xs text-gray-300 leading-relaxed">${(card.body || '').replace(/\\n/g, '<br>')}</p>
+                        ${card.highlight ? `<div class="mt-3 inline-block text-sm font-bold px-3 py-1.5 rounded-lg" style="background:rgba(212,168,85,0.15);border:1px solid rgba(212,168,85,0.4);color:#d4a855">${card.highlight}</div>` : ''}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <p class="text-xs text-gray-600">${company} · ${quarter}</p>
+                        <button class="copy-insta-card text-xs px-2 py-1 rounded bg-dark-700/80 border border-dark-600 text-gray-400 hover:text-white transition-colors" data-idx="${i}">
+                            <i data-lucide="copy" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>`).join('');
+        lucide.createIcons();
+        instaCardsEl.querySelectorAll('.copy-insta-card').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const c = cards[+btn.dataset.idx];
+                const txt = `${c.emoji} ${c.headline}\n\n${c.body}${c.highlight ? '\n\n' + c.highlight : ''}`;
+                navigator.clipboard.writeText(txt).then(() => toast(`슬라이드 ${+btn.dataset.idx + 1} 복사됨`));
+            });
+        });
+    }
+
+    copyAllInstaBtn?.addEventListener('click', () => {
+        if (!currentInstaCards.length) { toast('카드뉴스를 먼저 생성해주세요.', 'warn'); return; }
+        const text = currentInstaCards.map((c, i) =>
+            `【 ${i + 1}장 — ${c.title} 】\n${c.emoji} ${c.headline}\n\n${c.body}${c.highlight ? '\n\n' + c.highlight : ''}`
+        ).join('\n\n' + '─'.repeat(28) + '\n\n');
+        navigator.clipboard.writeText(text).then(() => toast('카드뉴스 5장 전체 복사됨'));
+    });
 
     // ── DART 파일 업로드 ──
     let dartFiles = [];
@@ -362,7 +424,7 @@ ${body}
             if (!ta?.value) { toast('저장할 내용이 없습니다.', 'warn'); return; }
             const co = (companyInput.value.trim() || '분석결과').replace(/\s/g,'');
             const q  = (quarterInput.value.trim() || '분기').replace(/\s/g,'');
-            const labels = { premiumEditor:'프리미엄리포트', freeEditor:'텔레그램요약', youtubeEditor:'유튜브대본' };
+            const labels = { premiumEditor:'프리미엄리포트', youtubeEditor:'유튜브대본' };
             const title = `IR Insight — ${companyInput.value.trim()||'분석결과'} ${quarterInput.value.trim()||''}`;
             const fn = `${co}_${q}_${labels[btn.dataset.for]}.doc`;
             const wordHtml = buildWordHtml(ta.value, title);
@@ -593,7 +655,7 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
     function saveHistory(co, mkt, q) {
         const h = JSON.parse(localStorage.getItem('irHistory')||'[]');
         h.unshift({ company:co, market:mkt, quarter:q, date:new Date().toLocaleDateString('ko-KR'),
-            content:{ premium:premiumEditor.value, free:freeEditor.value, youtube:youtubeEditor.value } });
+            content:{ premium:premiumEditor.value, insta:JSON.stringify(currentInstaCards), youtube:youtubeEditor.value } });
         if (h.length>8) h.pop();
         localStorage.setItem('irHistory', JSON.stringify(h));
         renderHistory();
@@ -620,8 +682,12 @@ strong{color:#744210}blockquote{border-left:3px solid #3182ce;padding-left:1em;c
                 const item = h[+row.dataset.i];
                 companyInput.value=item.company; marketSelect.value=item.market; quarterInput.value=item.quarter;
                 premiumEditor.value=item.content.premium||'';
-                freeEditor.value=item.content.free||'';
                 youtubeEditor.value=item.content.youtube||'';
+                try {
+                    const saved = item.content.insta ? JSON.parse(item.content.insta) : [];
+                    if (saved.length) renderInstaCards(saved, item.company, item.quarter);
+                    else { currentInstaCards=[]; instaEmptyEl?.classList.remove('hidden'); instaCardsEl?.classList.add('hidden'); }
+                } catch { currentInstaCards=[]; }
                 if (isPreview) editBtn?.click();
                 toast(`${item.company} 불러왔습니다.`);
             });
@@ -732,7 +798,9 @@ Example: Lockheed Martin(LMT), RTX Corporation(RTX), Northrop Grumman(NOC)`;
         document.getElementById('errorBox').classList.add('hidden');
         progressContainer.classList.remove('hidden');
         stepReset();
-        premiumEditor.value=''; freeEditor.value=''; youtubeEditor.value='';
+        premiumEditor.value=''; youtubeEditor.value='';
+        currentInstaCards = [];
+        if (instaEmptyEl) { instaEmptyEl.classList.remove('hidden'); instaCardsEl?.classList.add('hidden'); }
         if (isPreview) editBtn?.click();
 
         analyzeBtn.disabled = true;
@@ -814,33 +882,38 @@ ${dartSection}${disclosureGuide}
             premiumEditor.value = premiumText;
             stepDone(2);
 
-            // Step 3 — Free summary
+            // Step 3 — Instagram Card News
             stepActive(3);
-            const freePrompt = `당신은 방산 전문 IR 애널리스트입니다. 아래 리포트를 읽고 텔레그램 채널 포스팅을 작성하세요.
+            document.querySelector('[data-tab="insta"]')?.click();
+            const instaPrompt = `당신은 방산/재무 전문 인스타그램 콘텐츠 크리에이터입니다.
+아래 ${company} ${quarter} 재무 리포트를 바탕으로 인스타그램 카드뉴스 5장 콘텐츠를 만들어주세요.
 
 [리포트]
-${premiumText.slice(0, 2500)}
-${premiumText.length > 2500 ? '...(이하 생략)' : ''}
+${premiumText.slice(0, 2000)}${premiumText.length > 2000 ? '\n...(이하 생략)' : ''}
 
-[절대 금지]
-- **, *, ##, ~~~ 등 마크다운 기호 사용 금지
-- 설명·서두·맺음말 붙이기 금지
-- 한 줄이 40자를 넘지 않도록 할 것
+[출력 규칙]
+- 반드시 아래 JSON 배열 형식으로만 출력 (마크다운 코드블록·설명 텍스트 없이)
+- headline: 20자 이내, 임팩트 있게
+- body: 2~3줄 (각 줄 25자 이내, \\n으로 줄바꿈)
+- highlight: 핵심 수치 또는 키워드 (없으면 null)
 
-[출력 구조 — 이 순서 그대로만 출력]
-줄1: 📊 ${company} ${quarter} 핵심 정리
-줄2: (빈 줄)
-줄3: 📈 (매출 수치와 YoY 증감률 포함, 40자 이내)
-줄4: 📉 (영업이익 또는 원가율 이슈, 40자 이내)
-줄5: 💰 (수주잔고 또는 현금흐름 핵심, 40자 이내)
-줄6: (빈 줄)
-줄7: ⚠️ (리스크 또는 주의사항, 40자 이내)
-줄8: (빈 줄)
-줄9: 💡 (IR 팀장 핵심 인사이트, 40자 이내)
-줄10: (빈 줄)
-줄11: 👉 전체 심층 분석은 네이버 프리미엄에서 확인하세요 📌`;
+[슬라이드 구성]
+1장 — 실적 핵심: 매출·영업이익 YoY 수치
+2장 — 최대 리스크: 1가지 집중 분석
+3장 — 현금·수주: 현금흐름 또는 수주잔고
+4장 — 피어 비교: 업계 대비 포지셔닝
+5장 — 투자 의견: IR 팀장 최종 의견
 
-            freeEditor.value = await callGemini(freePrompt, 1500);
+[{"slide":1,"emoji":"📊","title":"핵심 실적","headline":"...","body":"...","highlight":"..."},{"slide":2,"emoji":"⚠️","title":"최대 리스크","headline":"...","body":"...","highlight":"..."},{"slide":3,"emoji":"💰","title":"현금·수주","headline":"...","body":"...","highlight":"..."},{"slide":4,"emoji":"🏆","title":"피어 비교","headline":"...","body":"...","highlight":"..."},{"slide":5,"emoji":"💡","title":"투자 의견","headline":"...","body":"...","highlight":"매수/관망/매도"}]`;
+
+            const instaRaw = await callGemini(instaPrompt, 2048);
+            try {
+                const jsonMatch = instaRaw.match(/\[[\s\S]*\]/);
+                if (!jsonMatch) throw new Error('JSON 없음');
+                renderInstaCards(JSON.parse(jsonMatch[0]), company, quarter);
+            } catch {
+                toast('카드뉴스 파싱 실패 — 재시도해주세요.', 'warn');
+            }
             stepDone(3);
 
             // Step 4 — YouTube Script
